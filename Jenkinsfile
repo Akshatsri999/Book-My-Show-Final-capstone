@@ -1,112 +1,65 @@
 pipeline {
     agent any
     tools {
-        jdk 'jdk17'         // Your Jenkins JDK installation name
-        nodejs 'node23'     // Your Jenkins Node.js installation name
+        jdk 'jdk17'
+        nodejs 'node23'
     }
     environment {
-        SCANNER_HOME = tool 'sonar-scanner'  // Your SonarQube Scanner installation
+        DOCKERHUB_CREDENTIALS = credentials('dockerhub-credentials')  // create in Jenkins
     }
     stages {
 
-        stage('Clean Workspace') {
-            steps {
-                cleanWs()
-            }
-        }
-
-        stage('Checkout Code from GitHub') {
+        stage('Checkout') {
             steps {
                 git branch: 'main', url: 'https://github.com/Akshatsri999/Book-My-Show-Final-capstone.git'
-                sh 'ls -la'  // Verify files after checkout
             }
         }
 
         stage('SonarQube Analysis') {
             steps {
-                withSonarQubeEnv('sonar-server') {  // Use your SonarQube server credentials
-                    sh ''' 
-                    $SCANNER_HOME/bin/sonar-scanner \
-                    -Dsonar.projectKey=BMS \
-                    -Dsonar.sources=. \
-                    -Dsonar.host.url=http://<SONAR_HOST>:9000 \
-                    -Dsonar.login=<SONAR_TOKEN>
-                    '''
+                withSonarQubeEnv('sonar-server') {   // must match Jenkins SonarQube config
+                    sh 'mvn clean verify sonar:sonar'
                 }
             }
         }
 
-        stage('Quality Gate') {
+        stage('Build Docker Image') {
             steps {
                 script {
-                    waitForQualityGate abortPipeline: false, credentialsId: 'Sonar-token'
+                    sh 'docker build -t bookmyshow-app:latest .'
                 }
             }
         }
 
-        stage('Install Dependencies') {
-            steps {
-                sh '''
-                cd bookmyshow-app
-                if [ -f package.json ]; then
-                    rm -rf node_modules package-lock.json
-                    npm install
-                else
-                    echo "package.json not found!"
-                    exit 1
-                fi
-                '''
-            }
-        }
-
-        stage('OWASP Dependency Check') {
-            steps {
-                dependencyCheck additionalArguments: '--scan ./ --disableYarnAudit --disableNodeAudit', odcInstallation: 'DP-Check'
-                dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
-            }
-        }
-
-        stage('Trivy FS Scan') {
-            steps {
-                sh 'trivy fs . > trivyfs.txt'
-            }
-        }
-
-        stage('Docker Build & Push') {
+        stage('Push to DockerHub') {
             steps {
                 script {
-                    withDockerRegistry(credentialsId: 'docker', toolName: 'docker') {
-                        sh ''' 
-                        docker build --no-cache -t akshatsri999/bookmyshow:latest -f bookmyshow-app/Dockerfile bookmyshow-app
-                        docker push akshatsri999/bookmyshow:latest
-                        '''
-                    }
+                    sh """
+                        echo $DOCKERHUB_CREDENTIALS_PSW | docker login -u $DOCKERHUB_CREDENTIALS_USR --password-stdin
+                        docker tag bookmyshow-app:latest your-dockerhub-username/bookmyshow-app:latest
+                        docker push your-dockerhub-username/bookmyshow-app:latest
+                    """
                 }
             }
         }
 
-        stage('Deploy to Docker Container') {
+        stage('Deploy Container') {
             steps {
-                sh ''' 
-                docker stop bms || true
-                docker rm bms || true
-                docker run -d --restart=always --name bms -p 3000:3000 akshatsri999/bookmyshow:latest
-                docker ps -a
-                docker logs bms
-                '''
+                script {
+                    sh """
+                        docker rm -f bookmyshow-app || true
+                        docker run -d --name bookmyshow-app -p 8080:8080 your-dockerhub-username/bookmyshow-app:latest
+                    """
+                }
             }
         }
     }
-
     post {
-        always {
-            emailext attachLog: true,
-                subject: "'${currentBuild.result}'",
-                body: "Project: ${env.JOB_NAME}<br/>" +
-                      "Build Number: ${env.BUILD_NUMBER}<br/>" +
-                      "URL: ${env.BUILD_URL}<br/>",
-                to: 'akshatsri999@gmail.com',
-                attachmentsPattern: 'trivyfs.txt,trivyimage.txt'
+        success {
+            echo 'Pipeline completed successfully!'
+        }
+        failure {
+            echo 'Pipeline failed. Check logs!'
         }
     }
 }
