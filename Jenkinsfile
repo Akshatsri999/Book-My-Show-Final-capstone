@@ -1,62 +1,48 @@
 pipeline {
     agent any
 
+    tools {
+        jdk 'jdk17'              // Your configured JDK in Jenkins
+        nodejs 'node23'          // Your configured Node.js installation name
+    }
+
     environment {
-        DOCKERHUB = credentials('dockerhub-credentials')
+        SCANNER_HOME = tool 'sonar-scanner'   // Must match your Jenkins SonarScanner installation name
     }
 
     stages {
-        stage('Checkout') {
+        stage('Clean Workspace') {
             steps {
-                git branch: 'main',
-                    url: 'https://github.com/Akshatsri999/Book-My-Show-Final-capstone.git',
-                    credentialsId: 'GitHub-Access-Token'
+                cleanWs()
             }
         }
 
-        stage('Install Dependencies') {
+        stage('Checkout from Git') {
             steps {
-                sh 'npm install'
+                git branch: 'main', url: 'https://github.com/Akshatsri999/Book-My-Show-Final-capstone.git'
+                sh 'ls -la'
             }
         }
 
         stage('SonarQube Analysis') {
             steps {
-                withSonarQubeEnv('sonar-server') {
-                    sh 'sonar-scanner'
+                withSonarQubeEnv('sonar-server') {   // Must match SonarQube server name in Jenkins
+                    sh '''
+                    $SCANNER_HOME/bin/sonar-scanner \
+                        -Dsonar.projectKey=BookMyShow \
+                        -Dsonar.projectName="Book My Show" \
+                        -Dsonar.sources=.
+                    '''
                 }
             }
         }
 
-        stage('Build Docker Image') {
+        stage('Quality Gate') {
             steps {
-                sh 'docker build -t bookmyshow-app:latest .'
+                script {
+                    waitForQualityGate abortPipeline: true, credentialsId: 'Sonar-token'
+                }
             }
-        }
-
-        stage('Push Docker Image') {
-            steps {
-                sh """
-                    echo $DOCKERHUB_PSW | docker login -u $DOCKERHUB_USR --password-stdin
-                    docker tag bookmyshow-app:latest $DOCKERHUB_USR/bookmyshow-app:latest
-                    docker push $DOCKERHUB_USR/bookmyshow-app:latest
-                """
-            }
-        }
-
-        stage('Deploy to Docker') {
-            steps {
-                sh 'docker run -d -p 8080:8080 --name bookmyshow-app bookmyshow-app:latest || true'
-            }
-        }
-    }
-
-    post {
-        failure {
-            echo "Pipeline failed. Please check logs."
-        }
-        success {
-            echo "Pipeline completed successfully!"
         }
     }
 }
