@@ -2,7 +2,7 @@ pipeline {
     agent any
     tools {
         jdk 'jdk17'         // Your Jenkins JDK installation name
-        nodejs 'nodejs'     // Your Jenkins Node.js installation name
+        nodejs 'node23'     // Your Jenkins Node.js installation name
     }
     environment {
         SCANNER_HOME = tool 'sonar-scanner'  // Your SonarQube Scanner installation
