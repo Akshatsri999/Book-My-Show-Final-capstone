@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bookmyshow-deployment
+  namespace: akshat  # <-- added namespace
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bookmyshow
+  template:
+    metadata:
+      labels:
+        app: bookmyshow
+    spec:
+      containers:
+      - name: bookmyshow
+        image: akshatsri999/bookmyshow-25:v1
+        ports:
+        - containerPort: 3000
