@@ -1,10 +1,6 @@
 pipeline {
     agent any
 
-    tools {
-        nodejs "nodejs"   // Make sure NodeJS is configured in Jenkins
-    }
-
     stages {
         stage('Checkout') {
             steps {
@@ -20,7 +16,7 @@ pipeline {
                         sonar-scanner \
                           -Dsonar.projectKey=bookmyshow-capstone \
                           -Dsonar.sources=. \
-                          -Dsonar.host.url=http://<EC2-Public-IP>:9000 \
+                          -Dsonar.host.url=http://<EC2-PUBLIC-IP>:9000 \
                           -Dsonar.login=${SONAR_AUTH_TOKEN}
                     """
                 }
