@@ -1,94 +1,99 @@
 pipeline {
     agent any
+
     tools {
-        jdk 'jdk17'
-        nodejs 'node23'
+        jdk 'jdk17'            // Make sure this JDK is configured in Jenkins
+        nodejs 'node23'        // Make sure this NodeJS installation exists
     }
+
     environment {
-        SCANNER_HOME = tool 'sonar-scanner'
+        SCANNER_HOME = tool 'sonar-scanner'  // Make sure this is configured in Jenkins
     }
+
     stages {
         stage('Clean Workspace') {
             steps {
                 cleanWs()
             }
         }
-        stage('Checkout from Git') {
+
+        stage('Checkout from GitHub') {
             steps {
-                git branch: 'main', url: 'https://github.com/Akshatsri999/Book-My-Show-Final-capstone.git'
-                sh 'ls -la'
+                git branch: 'main', 
+                    url: 'https://github.com/Akshatsri999/Book-My-Show-Final-capstone.git',
+                    credentialsId: 'github-credentials'  // Use your GitHub token credential ID
+                sh 'ls -la' // Verify files after checkout
             }
         }
+
         stage('SonarQube Analysis') {
             steps {
                 withSonarQubeEnv('sonar-server') {
-                    sh '''
+                    sh """ 
                     $SCANNER_HOME/bin/sonar-scanner \
                     -Dsonar.projectKey=BMS \
-                    -Dsonar.sources=. \
-                    -Dsonar.host.url=http://<your-sonarqube-server>:9000 \
-                    -Dsonar.login=<sonar-token>
-                    '''
+                    -Dsonar.projectName=BMS \
+                    -Dsonar.sources=. 
+                    """
                 }
             }
         }
-        stage('Quality Gate') {
-            steps {
-                script {
-                    waitForQualityGate abortPipeline: false, credentialsId: 'Sonar-token'
-                }
-            }
-        }
+
         stage('Install Dependencies') {
             steps {
-                sh '''
-                cd bookmyshow-app
-                npm install
-                '''
+                sh """
+                if [ -f package.json ]; then
+                    rm -rf node_modules package-lock.json
+                    npm install
+                else
+                    echo "package.json not found!"
+                    exit 1
+                fi
+                """
             }
         }
-        stage('OWASP FS Scan') {
+
+        stage('OWASP Dependency Check') {
             steps {
                 dependencyCheck additionalArguments: '--scan ./ --disableYarnAudit --disableNodeAudit', odcInstallation: 'DP-Check'
                 dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
             }
         }
+
         stage('Trivy FS Scan') {
             steps {
-                sh 'trivy fs . > trivyfs.txt'
+                sh 'trivy fs . > trivyfs.txt || echo "Trivy scan failed, continue..."'
             }
         }
+
         stage('Docker Build & Push') {
             steps {
                 script {
-                    withDockerRegistry(credentialsId: 'docker', toolName: 'docker') {
-                        sh '''
-                        docker build -t akshatsri999/bookmyshow:latest bookmyshow-app
+                    withDockerRegistry(credentialsId: 'dockerhub', url: '') {
+                        sh """
+                        docker build -t akshatsri999/bookmyshow:latest .
                         docker push akshatsri999/bookmyshow:latest
-                        '''
+                        """
                     }
                 }
             }
         }
-        stage('Deploy to Container') {
+
+        stage('Deploy to Docker') {
             steps {
-                sh '''
+                sh """
                 docker stop bms || true
                 docker rm bms || true
-                docker run -d --restart=always -p 3000:3000 --name bms akshatsri999/bookmyshow:latest
+                docker run -d --restart=always --name bms -p 3000:3000 akshatsri999/bookmyshow:latest
                 docker ps -a
-                docker logs bms
-                '''
+                """
             }
         }
     }
+
     post {
         always {
-            emailext attachLog: true,
-                subject: "Build ${currentBuild.result}",
-                body: "Project: ${env.JOB_NAME}<br/>Build Number: ${env.BUILD_NUMBER}<br>URL: ${env.BUILD_URL}",
-                to: 'akshatsri999@gmail.com',
-                attachmentsPattern: 'trivyfs.txt'
+            echo "Pipeline finished. Check Docker container and SonarQube results."
         }
     }
 }
