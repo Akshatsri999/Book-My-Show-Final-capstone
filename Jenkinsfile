@@ -2,12 +2,12 @@ pipeline {
     agent any
 
     tools {
-        jdk 'jdk17'              // Your configured JDK in Jenkins
-        nodejs 'node23'          // Your configured Node.js installation name
+        jdk 'jdk17'              // must match Jenkins JDK name
+        nodejs 'node23'          // must match Jenkins NodeJS name
     }
 
     environment {
-        SCANNER_HOME = tool 'sonar-scanner'   // Must match your Jenkins SonarScanner installation name
+        SCANNER_HOME = tool 'sonar-scanner'   // must match Jenkins SonarScanner name
     }
 
     stages {
@@ -20,18 +20,17 @@ pipeline {
         stage('Checkout from Git') {
             steps {
                 git branch: 'main', url: 'https://github.com/Akshatsri999/Book-My-Show-Final-capstone.git'
-                sh 'ls -la'
             }
         }
 
         stage('SonarQube Analysis') {
             steps {
-                withSonarQubeEnv('sonar-server') {   // Must match SonarQube server name in Jenkins
+                withSonarQubeEnv('sonar-server') {   // must match SonarQube server name in Jenkins
                     sh '''
                     $SCANNER_HOME/bin/sonar-scanner \
-                        -Dsonar.projectKey=BookMyShow \
-                        -Dsonar.projectName="Book My Show" \
-                        -Dsonar.sources=.
+                      -Dsonar.projectKey=BookMyShow \
+                      -Dsonar.projectName="Book My Show" \
+                      -Dsonar.sources=.
                     '''
                 }
             }
