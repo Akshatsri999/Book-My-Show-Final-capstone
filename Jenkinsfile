@@ -2,37 +2,36 @@ pipeline {
     agent any
 
     environment {
-        SONAR_HOST_URL = 'http://<SONARQUBE_IP>:9000'  // Replace with your SonarQube server IP
-        SONAR_TOKEN = credentials('sonar-token')       // Add your SonarQube token in Jenkins credentials
+        SCANNER_HOME = tool 'sonar-scanner'
     }
 
     stages {
         stage('Git Checkout') {
             steps {
-                git 'https://github.com/Akshatsri999/Book-My-Show-Final-capstone.git'
+                git branch: 'main', url: 'https://github.com/Akshatsri999/Book-My-Show-Final-capstone.git'
             }
         }
-        
+
         stage('SonarQube Analysis') {
             steps {
-                script {
+                withSonarQubeEnv('sonar') {
                     sh """
-                    docker run --rm \
-                        -e SONAR_HOST_URL=${SONAR_HOST_URL} \
-                        -e SONAR_LOGIN=${SONAR_TOKEN} \
-                        -v $WORKSPACE:/usr/src sonarsource/sonar-scanner-cli
+                        ${SCANNER_HOME}/bin/sonar-scanner \
+                        -Dsonar.projectKey=bookmyshow-akshat \
+                        -Dsonar.projectName=bookmyshow-akshat \
+                        -Dsonar.sources=.
                     """
                 }
             }
         }
-        
-        stage('Docker Build & Push') {
+
+        stage('Docker Build, Tag, Push') {
             steps {
                 script {
-                    withDockerRegistry(credentialsId: 'docker-cred') {
-                        sh 'docker build -t bookmyshow:v1 .'
-                        sh 'docker tag bookmyshow:v1 akshatsri999/bookmyshow:v1'
-                        sh 'docker push akshatsri999/bookmyshow:v1'
+                    withDockerRegistry(credentialsId: 'docker-cred', toolName: 'docker') {
+                        sh 'docker build -t bookmyshow-25:v1 .'
+                        sh 'docker tag bookmyshow-25:v1 akshatsri999/bookmyshow-25:v1'
+                        sh 'docker push akshatsri999/bookmyshow-25:v1'
                     }
                 }
             }
@@ -40,30 +39,11 @@ pipeline {
 
         stage('Deploy to Container') {
             steps {
-                sh 'docker run -d --name bookmyshow-app -p 3130:3130 akshatsri999/bookmyshow:v1'
-            }
-        }
-        
-        stage('Deploy to Kubernetes') {
-            steps {
                 script {
-                    withKubeConfig(credentialsId: 'k8s-config', namespace: 'akshat-ns') {
-                        sh 'kubectl apply -f deployment.yml'
-                        sh 'kubectl apply -f service.yml'
-                        sh 'kubectl apply -f usernode-js-service.yml'
-                        sh 'kubectl apply -f userprofile-deployment.yml'
-                    }
+                    sh 'docker rm -f bookmyshow-container || true'
+                    sh 'docker run -d --name bookmyshow-container -p 3000:3000 akshatsri999/bookmyshow-25:v1'
                 }
             }
-        }
-    }
-
-    post {
-        success {
-            echo 'Pipeline completed successfully!'
-        }
-        failure {
-            echo 'Pipeline failed. Check logs!'
         }
     }
 }
